@@ -1,7 +1,7 @@
 {"version": "2.0.0", "tasks": [{
-	"type": "cargo",
-	"command": "run",
-	"args": ["--target", "x86_64-pc-windows-gnu"],
+	"type": "shell",
+	"command": "cargo build --target x86_64-pc-windows-gnu && wine /run/user/1000/cargo/x86_64-pc-windows-gnu/debug/openxr.exe",
+	//"command": "cargo", "args": ["build --target", "x86_64-pc-windows-gnu"],
 	"problemMatcher": ["$rustc"],
 	"label": "x86_64-pc-windows-gnu",
 	"presentation": { "clear": true }

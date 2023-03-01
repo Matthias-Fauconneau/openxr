@@ -1,7 +1,7 @@
-#![feature(default_free_fn, generic_arg_infer)]
+#![feature(default_free_fn, generic_arg_infer, raw_dylib)]
 #![allow(non_upper_case_globals,non_snake_case,dead_code)]
 
-#[link(name="Microsoft.Holographic.AppRemoting.OpenXr")]
+#[link(name="Microsoft.Holographic.AppRemoting.OpenXr", kind="raw-dylib")]
 extern "C" { #[link_name="xrNegotiateLoaderRuntimeInterface"] fn negotiate_loader_runtime_interface(loader_info: *const NegotiateLoaderInfo, runtime_request: *mut NegotiateRuntimeRequest) -> Result; }
 use std::{default::default, ptr::null, mem::size_of, ffi::{c_void as void, c_char}}; #[allow(non_camel_case_types)] type char = u8;
 #[derive(Debug)] #[derive(PartialEq)] #[repr(C)] enum Result { Success = 0 }

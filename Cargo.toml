@@ -1,1 +1,9 @@
 package={name='openxr', version='0.0.0', edition='2021'}
+[dependencies]
+bytemuck='*'
+d3d12='*'
+wgpu={version='*', features=['spirv']}
+wgpu-hal={version='=0.15.2', features=['dx12']}
+pollster='*'
+winapi='*' #DXGI_FORMAT_*
+local-ip-address="*"

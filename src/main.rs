@@ -1,4 +1,4 @@
-#![feature(default_free_fn, generic_arg_infer, raw_dylib)]
+#![feature(default_free_fn, generic_arg_infer, raw_dylib)]#![allow(non_snake_case)]
 use std::{default::default, ptr::null};
 mod xr; use xr::*;
 
@@ -35,19 +35,19 @@ fn main() {
     let mut get_D3D12_graphics_requirements : Option<extern "C" fn(instance: Instance, system: u64, requirements: *mut GraphicsRequirementsD3D12)->Result> = None;
     get_instance_proc_addr(xr, b"xrGetD3D12GraphicsRequirementsKHR\0" as *const _, &mut get_D3D12_graphics_requirements as *mut _ as *mut _);
     let get_D3D12_graphics_requirements = get_D3D12_graphics_requirements.unwrap();
-    
+
     let mut requirements = default();
     assert_eq!(get_D3D12_graphics_requirements(xr, system, &mut requirements), Result::Success); // Microsoft Holographic Remoting implementation fails to create session without this call
     dbg!(requirements.adapter, requirements.min_feature_level);
 
     let remote_host = std::ffi::CString::new(std::env::args().skip(1).next().as_ref().map(|s| s.as_str()).unwrap_or("192.168.0.101")).unwrap();
-    
+
     let mut remoting_connect : Option<extern "C" fn(instance: Instance, system: u64, info: *const RemotingConnectInfo)->Result> = None;
     get_instance_proc_addr(xr, b"xrRemotingConnectMSFT\0" as *const _, &mut remoting_connect as *mut _ as *mut _);
     let remoting_connect = remoting_connect.unwrap();
 
     remoting_connect(xr, system, &RemotingConnectInfo{remote_host: remote_host.as_ptr(), remote_port: 8265, ..default()});
-    
+
     use pollster::FutureExt as _;
     let adapter = wgpu::Instance::new(
         wgpu::InstanceDescriptor{backends: wgpu::Backends::DX12, dx12_shader_compiler: wgpu::Dx12Compiler::Dxc{dxil_path: None, dxc_path: None}}
@@ -73,7 +73,7 @@ fn main() {
     ]});
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor{label: None, bind_group_layouts: &[layout], push_constant_ranges: &[]});
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
-    
+
     let mut enumerate_view_configuration_views : Option<extern "C" fn(instance: Instance, system: u64, ty: *const ViewConfigurationType, capacity: u32, len: *const u32, views: *const ViewConfigurationView)->Result> = None;
     get_instance_proc_addr(xr, b"xrEnumerateViewConfigurationViews\0" as *const _, &mut enumerate_view_configuration_views as *mut _ as *mut _);
     let enumerate_view_configuration_views = enumerate_view_configuration_views.unwrap();
@@ -87,7 +87,7 @@ fn main() {
         assert_eq!(buffer.len(), len as usize);
         buffer
     }
-    
+
     let view_configuration_type = ViewConfigurationType::Stereo;
     let views = array(|capacity, len, buffer| enumerate_view_configuration_views(xr, system, &view_configuration_type, capacity, len, buffer));
 
@@ -141,7 +141,7 @@ fn main() {
     let ref camera = (std::env::args().skip(2).next().map(|interface| interface.parse().unwrap()).unwrap_or(std::net::Ipv4Addr::UNSPECIFIED),6666);
     let camera = std::net::UdpSocket::bind(camera).unwrap();
     loop {
-        
+
         let mut poll_event : Option<extern "C" fn(instance: Instance, event_data: *mut EventDataBuffer)->Result> = None;
         get_instance_proc_addr(xr, b"xrPollEvent\0" as *const _, &mut poll_event as *mut _ as *mut _);
         let poll_event = poll_event.unwrap();
@@ -150,28 +150,28 @@ fn main() {
         while poll_event(xr, &mut event) == Result::Success {
             match event.ty {
                 StructureType::InstanceLossPending => { return /*Ok(())*/; }
-                StructureType::SessionStateChanged => {use SessionState::*; match unsafe{*(&event as *const _ as *const SessionStateChanged)}.state {
+                StructureType::SessionStateChanged => {use SessionState::*; match unsafe{&*(&event as *const _ as *const SessionStateChanged)}.state {
                     Idle|Synchronized|Visible|Focused => {},
-                    Ready => { 
+                    Ready => {
                         let mut begin_session : Option<extern "C" fn(session: Session, begin_info: *const SessionBeginInfo)->Result> = None;
                         get_instance_proc_addr(xr, b"xrBeginSession\0" as *const _, &mut begin_session as *mut _ as *mut _);
                         let begin_session = begin_session.unwrap();
 
-                        assert_eq!(begin_session(session, &SessionBeginInfo{primary_view_configuration_type: view_configuration_type, ..default()}), Result::Success); 
+                        assert_eq!(begin_session(session, &SessionBeginInfo{primary_view_configuration_type: view_configuration_type, ..default()}), Result::Success);
                         println!("Ready");
                     }
-                    Stopping => { 
+                    Stopping => {
                         let mut end_session : Option<extern "C" fn(session: Session)->Result> = None;
                         get_instance_proc_addr(xr, b"xrEndSession\0" as *const _, &mut end_session as *mut _ as *mut _);
                         let end_session = end_session.unwrap();
 
                         assert_eq!(end_session(session), Result::Success);
 
-                        println!("Stopping"); 
-                        return /*Ok(())*/; 
+                        println!("Stopping");
+                        return /*Ok(())*/;
                     }
                     Exiting|LossPending => { println!("Exiting|LossPending"); return /*Ok(())*/; }
-                    state => panic!()
+                    _ => panic!()
                 }}
                 _ => {dbg!()}
             }
@@ -195,16 +195,16 @@ fn main() {
         let end_frame = end_frame.unwrap();
 
         let environment_blend_mode = EnvironmentBlendMode::Additive;
-        if frame_state.should_render == 0 { 
-            dbg!(); 
+        if frame_state.should_render == 0 {
+            dbg!();
             assert_eq!(end_frame(session, &FrameEndInfo{
-                environment_blend_mode, 
-                display_time: frame_state.predicted_display_time, 
-                layer_count: 0, 
-                layers: null(), 
+                environment_blend_mode,
+                display_time: frame_state.predicted_display_time,
+                layer_count: 0,
+                layers: null(),
                 ..default()
-            }), Result::Success); 
-            continue; 
+            }), Result::Success);
+            continue;
         }
 
         let mut acquire_swapchain_image : Option<extern "C" fn(swapchain: Swapchain, acquire_info: *const SwapchainImageAcquireInfo, index: *mut u32)->Result> = None;
@@ -217,7 +217,7 @@ fn main() {
         let mut wait_swapchain_image : Option<extern "C" fn(swapchain: Swapchain, wait_info: *const SwapchainImageWaitInfo)->Result> = None;
         get_instance_proc_addr(xr, b"xrWaitSwapchainImage\0" as *const _, &mut wait_swapchain_image as *mut _ as *mut _);
         let wait_swapchain_image = wait_swapchain_image.unwrap();
-        
+
         assert_eq!(wait_swapchain_image(swapchain, &SwapchainImageWaitInfo{timeout: i64::MAX, ..default()}), Result::Success);
 
         let mut image = vec![0u16; 160*120];
@@ -252,30 +252,30 @@ fn main() {
         let mut release_swapchain_image : Option<extern "C" fn(swapchain: Swapchain, release_info: *const SwapchainImageReleaseInfo)->Result> = None;
         get_instance_proc_addr(xr, b"xrReleaseSwapchainImage\0" as *const _, &mut release_swapchain_image as *mut _ as *mut _);
         let release_swapchain_image = release_swapchain_image.unwrap();
-    
+
         assert_eq!(release_swapchain_image(swapchain, &default()), Result::Success);
 
         let mut locate_views : Option<extern "C" fn(session: Session, view_locate_info: *const ViewLocateInfo, view_state: *mut ViewState, capacity: u32, len: *mut u32, views: *mut View)->Result> = None;
         get_instance_proc_addr(xr, b"xrLocateViews\0" as *const _, &mut locate_views as *mut _ as *mut _);
         let locate_views = locate_views.unwrap();
-            
+
         let views = array(|capacity, len, buffer| {
             let mut view_state = default();
             locate_views(session, &ViewLocateInfo{view_configuration_type, display_time: frame_state.predicted_display_time, space, ..default()}, &mut view_state, capacity, len, buffer)
         });
 
         assert_eq!(end_frame(session, &FrameEndInfo{
-            environment_blend_mode, 
-            display_time: frame_state.predicted_display_time, 
-            layer_count: 1, 
+            environment_blend_mode,
+            display_time: frame_state.predicted_display_time,
+            layer_count: 1,
             layers: &[
-                &CompositionLayerProjection{space, views: &[0,1].map(|i| 
+                &CompositionLayerProjection{space, views: &[0,1].map(|i|
                     CompositionLayerProjectionView{
-                        pose: views[i].pose, 
-                        fov: views[i].fov, 
+                        pose: views[i].pose,
+                        fov: views[i].fov,
                         sub_image: SwapchainSubImage{
-                            swapchain, 
-                            image_array_index: /*i as u32*/0, 
+                            swapchain,
+                            image_array_index: /*i as u32*/0,
                             image_rect: Rect2D{offset: Offset2D{x: 0, y: 0}, extent: Extent2D{width: width as i32, height: height as i32}}
                         },
                         ..default()
@@ -284,6 +284,6 @@ fn main() {
                 } as *const _
             ] as *const _,
             ..default()
-        }), Result::Success); 
+        }), Result::Success);
     }
 }

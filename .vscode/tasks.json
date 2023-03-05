@@ -1,21 +1,13 @@
-21{"version": "2.0.0", "tasks": [
+{
+	"version": "2.0.0",
+	"tasks": [
 		{
-			"taskName": "Run",
-			"command": "target/debug/deps/openxr-87722be0ed54984c.exe",
-			"dependsOn": "Build",
-			"args": [],
-			"isShellCommand": true,
-			"label": "Run",
-			"problemMatcher": [
-				"$rustc"
-			]
-		},
-		{
-			"taskName": "Build",
-			"command": "cargo",
-			"args": [
-				"build"
-			],
-			"isShellCommand": true
+			"type": "cargo",
+			"command": "xwin",
+			"args": ["run","--target","x86_64-pc-windows-msvc"],
+			"problemMatcher": ["$rustc"],
+			"label": "xwin",
+			"presentation": { "clear": true }
 		}
-	]}
+	]
+}

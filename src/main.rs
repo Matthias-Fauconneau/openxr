@@ -1,11 +1,12 @@
 #![feature(default_free_fn, generic_arg_infer, raw_dylib)]#![allow(non_snake_case)]
 use std::{default::default, ptr::null};
-mod xr; use xr::*;
+mod xr; use xr::{*, Result::Success};
 
 fn main() {
     let ref mut runtime_request = NegotiateRuntimeRequest::default();
-    assert!(unsafe{negotiate_loader_runtime_interface(&NegotiateLoaderInfo::default() as *const _, runtime_request as *mut _)} == Result::Success);
+    assert!(unsafe{negotiate_loader_runtime_interface(&NegotiateLoaderInfo::default() as *const _, runtime_request as *mut _)} == Success);
     let get_instance_proc_addr = runtime_request.get_instance_proc_addr.unwrap();
+
     /*let mut enumerate_instance_extension_properties : Option<extern "C" fn(layer_name: *const char, property_capacity_input: u32, property_count_output: *mut u32, properties: *mut ExtensionProperties)->Result> = None;
     get_instance_proc_addr(0, b"xrEnumerateInstanceExtensionProperties\0" as *const _ as *const _, &mut enumerate_instance_extension_properties as *mut _ as *mut _);
     let enumerate_instance_extension_properties = enumerate_instance_extension_properties.unwrap();

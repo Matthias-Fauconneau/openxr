@@ -94,6 +94,7 @@ fn main() {
 
     let view_configuration_type = ViewConfigurationType::Stereo;
     let views = array(|capacity, len, buffer| enumerate_view_configuration_views(xr, system, view_configuration_type, capacity, len, buffer));
+    assert_eq!(views.len(), 2);
     if views.len() == 2 { assert!(views[0] == views[1]); } else { assert_eq!(views.len(), 1); }
     
     let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{
@@ -104,7 +105,7 @@ fn main() {
         primitive: default(),
         depth_stencil: None,
         multisample: default(),
-        multiview: None//(views.len() > 1).then(|| (views.len() as u32).try_into().ok().unwrap()),
+        multiview: None/*(views.len() > 1).then(|| (views.len() as u32).try_into().ok().unwrap())*/,
     });
     let ViewConfigurationView{recommended_image_rect_width: width, recommended_image_rect_height: height, ..} = views[0];
 
@@ -149,6 +150,21 @@ fn main() {
     let mut poll_event : Option<extern "C" fn(instance: Instance, event_data: *mut EventDataBuffer)->Result> = None;
     get_instance_proc_addr(xr, b"xrPollEvent\0" as *const _, &mut poll_event as *mut _ as *mut _);
     let poll_event = poll_event.unwrap();
+    let mut wait_frame : Option<extern "C" fn(session: Session, frame_wait_info: *const FrameWaitInfo, frame_state: *mut FrameState)->Result> = None;
+    get_instance_proc_addr(xr, b"xrWaitFrame\0" as *const _, &mut wait_frame as *mut _ as *mut _);
+    let wait_frame = wait_frame.unwrap();
+    let mut begin_frame : Option<extern "C" fn(session: Session, frame_begin_info: *const FrameBeginInfo)->Result> = None;
+    get_instance_proc_addr(xr, b"xrBeginFrame\0" as *const _, &mut begin_frame as *mut _ as *mut _);
+    let begin_frame = begin_frame.unwrap();
+    let mut end_frame : Option<extern "C" fn(session: Session, frame_end_info: *const FrameEndInfo)->Result> = None;
+    get_instance_proc_addr(xr, b"xrEndFrame\0" as *const _, &mut end_frame as *mut _ as *mut _);
+    let end_frame = end_frame.unwrap();
+    let mut acquire_swapchain_image : Option<extern "C" fn(swapchain: Swapchain, acquire_info: *const SwapchainImageAcquireInfo, index: *mut u32)->Result> = None;
+    get_instance_proc_addr(xr, b"xrAcquireSwapchainImage\0" as *const _, &mut acquire_swapchain_image as *mut _ as *mut _);
+    let acquire_swapchain_image = acquire_swapchain_image.unwrap();
+    let mut wait_swapchain_image : Option<extern "C" fn(swapchain: Swapchain, wait_info: *const SwapchainImageWaitInfo)->Result> = None;
+    get_instance_proc_addr(xr, b"xrWaitSwapchainImage\0" as *const _, &mut wait_swapchain_image as *mut _ as *mut _);
+    let wait_swapchain_image = wait_swapchain_image.unwrap();
 
     loop {       
         loop {
@@ -187,22 +203,12 @@ fn main() {
             }
         }
 
-        let mut wait_frame : Option<extern "C" fn(session: Session, frame_wait_info: *const FrameWaitInfo, frame_state: *mut FrameState)->Result> = None;
-        get_instance_proc_addr(xr, b"xrWaitFrame\0" as *const _, &mut wait_frame as *mut _ as *mut _);
-        let wait_frame = wait_frame.unwrap();
 
         let mut frame_state = default();
         assert_eq!(wait_frame(session, &default(), &mut frame_state), Success);
 
-        let mut begin_frame : Option<extern "C" fn(session: Session, frame_begin_info: *const FrameBeginInfo)->Result> = None;
-        get_instance_proc_addr(xr, b"xrBeginFrame\0" as *const _, &mut begin_frame as *mut _ as *mut _);
-        let begin_frame = begin_frame.unwrap();
 
         assert_eq!(begin_frame(session, &default()), Success);
-
-        let mut end_frame : Option<extern "C" fn(session: Session, frame_end_info: *const FrameEndInfo)->Result> = None;
-        get_instance_proc_addr(xr, b"xrEndFrame\0" as *const _, &mut end_frame as *mut _ as *mut _);
-        let end_frame = end_frame.unwrap();
 
         let environment_blend_mode = EnvironmentBlendMode::Additive;
         if frame_state.should_render == 0 {
@@ -213,21 +219,13 @@ fn main() {
                 layers: null(),
                 ..default()
             }), Success);
-            dbg!();
             continue;
         }
-
-        let mut acquire_swapchain_image : Option<extern "C" fn(swapchain: Swapchain, acquire_info: *const SwapchainImageAcquireInfo, index: *mut u32)->Result> = None;
-        get_instance_proc_addr(xr, b"xrAcquireSwapchainImage\0" as *const _, &mut acquire_swapchain_image as *mut _ as *mut _);
-        let acquire_swapchain_image = acquire_swapchain_image.unwrap();
 
         let mut index = 0;
         assert_eq!(acquire_swapchain_image(swapchain, &default(), &mut index), Success);
 
-        let mut wait_swapchain_image : Option<extern "C" fn(swapchain: Swapchain, wait_info: *const SwapchainImageWaitInfo)->Result> = None;
-        get_instance_proc_addr(xr, b"xrWaitSwapchainImage\0" as *const _, &mut wait_swapchain_image as *mut _ as *mut _);
-        let wait_swapchain_image = wait_swapchain_image.unwrap();
-
+        
         assert_eq!(wait_swapchain_image(swapchain, &SwapchainImageWaitInfo{timeout: i64::MAX, ..default()}), Success);
 
         let mut image = vec![0u16; 160*120];
@@ -284,21 +282,21 @@ fn main() {
             environment_blend_mode,
             display_time: frame_state.predicted_display_time,
             layer_count: 1,
-            layers: &[
-                &CompositionLayerProjection{space, views: &[0,1].map(|i|
+            layers: &/*[*/(
+                &CompositionLayerProjection{space, layer_flags: 0, view_count: 2, views: &[0,1].map(|i|
                     CompositionLayerProjectionView{
-                        pose: views[i].pose,
-                        fov: views[i].fov,
+                        pose: views[0/*i*/].pose,
+                        fov: views[0/*i*/].fov,
                         sub_image: SwapchainSubImage{
                             swapchain,
-                            image_array_index: /*i as u32*/0,
-                            image_rect: Rect2D{offset: Offset2D{x: 0, y: 0}, extent: Extent2D{width: width as i32, height: height as i32}}
+                            image_rect: Rect2D{offset: Offset2D{x: 0, y: 0}, extent: Extent2D{width: width as i32, height: height as i32}},
+                            image_array_index: 0,//i as u32,
                         },
                         ..default()
-                    }) as *const _,
+                    }) as *const CompositionLayerProjectionView,
                     ..default()
-                } as *const _
-            ] as *const _,
+                } as *const CompositionLayerProjection
+            /*]*/) as *const *const CompositionLayerProjection,
             ..default()
         }), Success);
     }

@@ -3,6 +3,59 @@ use std::{default::default, ptr::null};
 mod xr; use xr::{*, Result::Success};
 
 fn main() {
+    /*//  ffplay -headers "Authorization: Basic ZA/" 
+    let response = attohttpc::get("https://192.168.0.101/api/holographic/stream/live_high.mp4?holo=false&pv=true&mic=false&loopback=false&RenderFromCamera=false")
+        .basic_auth("ethnsel@gmail.com",Some("")).send();
+    assert!(response.is_success());*/
+    use ffmpeg::format::{input, Pixel};
+    use ffmpeg::media::Type;
+    use ffmpeg::software::scaling::{context::Context, flag::Flags};
+    use ffmpeg::util::frame::video::Video;
+    use std::env;
+    use std::fs::File;
+    use std::io::prelude::*;
+    ffmpeg::init().unwrap();
+    let mut ictx = input("https://192.168.0.101/api/holographic/stream/live_high.mp4?holo=false&pv=true&mic=false&loopback=false&RenderFromCamera=false").unwrap();
+    let input = ictx.streams().best(Type::Video).unwrap();
+    let video_stream_index = input.index();
+
+        let context_decoder = ffmpeg::codec::context::Context::from_parameters(input.parameters())?;
+        let mut decoder = context_decoder.decoder().video()?;
+
+        let mut scaler = Context::get(
+            decoder.format(),
+            decoder.width(),
+            decoder.height(),
+            Pixel::RGB24,
+            decoder.width(),
+            decoder.height(),
+            Flags::BILINEAR,
+        )?;
+
+        let mut frame_index = 0;
+
+        let mut receive_and_process_decoded_frames =
+            |decoder: &mut ffmpeg::decoder::Video| -> Result<(), ffmpeg::Error> {
+                let mut decoded = Video::empty();
+                while decoder.receive_frame(&mut decoded).is_ok() {
+                    let mut rgb_frame = Video::empty();
+                    scaler.run(&decoded, &mut rgb_frame)?;
+                    save_file(&rgb_frame, frame_index).unwrap();
+                    frame_index += 1;
+                }
+                Ok(())
+            };
+
+        for (stream, packet) in ictx.packets() {
+            if stream.index() == video_stream_index {
+                decoder.send_packet(&packet)?;
+                receive_and_process_decoded_frames(&mut decoder)?;
+            }
+        }
+        decoder.send_eof()?;
+        receive_and_process_decoded_frames(&mut decoder)?;
+    }
+
     let ref mut runtime_request = NegotiateRuntimeRequest::default();
     assert!(unsafe{negotiate_loader_runtime_interface(&NegotiateLoaderInfo::default() as *const _, runtime_request as *mut _)} == Success);
     let get_instance_proc_addr = runtime_request.get_instance_proc_addr.unwrap();
@@ -52,10 +105,8 @@ fn main() {
     let adapter = wgpu::Instance::new(
         wgpu::InstanceDescriptor{backends: wgpu::Backends::DX12, dx12_shader_compiler: default()/*wgpu::Dx12Compiler::Dxc{dxil_path: None, dxc_path: None}*/}
     ).request_adapter(&default()).block_on().unwrap();
-    dbg!(xr, system, requirements.adapter, requirements.min_feature_level);
     let (device, queue) = adapter.request_device(
         &wgpu::DeviceDescriptor{features: wgpu::Features::TEXTURE_FORMAT_16BIT_NORM/*|wgpu::Features::MULTIVIEW*/, ..default()},
-        //&default(),
         None).block_on().unwrap();
     use wgpu_hal::api::Dx12;
     let session = unsafe {
@@ -66,9 +117,8 @@ fn main() {
         let create_session = create_session.unwrap();
 
         let mut session = 0;
-        println!("create_session");
         assert_eq!(create_session(xr, &SessionCreateInfo{next: &GraphicsBindingD3D12{device, queue, ..default()}, system, create_flags: 0, ..default()}, &mut session), Success);
-        dbg!(session)
+        session
     };
     let vert_shader = device.create_shader_module(wgpu::include_wgsl!("fullscreen.wgsl"));
     let frag_shader = device.create_shader_module(wgpu::include_wgsl!("sample.wgsl"));
@@ -197,7 +247,7 @@ fn main() {
                 }}
                 StructureType::RemotingConnected => println!("RemotingConnected"),
                 StructureType::RemotingDisconnected => println!("RemotingDisconnected"),
-                StructureType::RemotingTimestampConversionReady => println!("RemotingTimestampConversionReady"),
+                StructureType::RemotingTimestampConversionReady => {},
                 StructureType::EventDataBuffer => break,
                 e => {panic!("{:?}", e as u32)}
             }

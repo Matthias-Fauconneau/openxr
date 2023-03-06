@@ -7,3 +7,5 @@ wgpu-hal={version='=0.15.2', features=['dx12']}
 pollster='*'
 winapi='*' #DXGI_FORMAT_*
 local-ip-address="*"
+ffmpeg={package="ffmpeg-next"}
+#attohttpc='*'

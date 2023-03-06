@@ -4,10 +4,31 @@
 		{
 			"type": "cargo",
 			"command": "xwin",
-			"args": ["run","--target","x86_64-pc-windows-msvc"],
-			"problemMatcher": ["$rustc"],
+			"args": [
+				"run",
+				"--target",
+				"x86_64-pc-windows-msvc"
+			],
+			"problemMatcher": [
+				"$rustc"
+			],
 			"label": "xwin",
-			"presentation": { "clear": true }
+			"presentation": {
+				"clear": true
+			}
+		},
+		{
+			"type": "cargo",
+			"command": "run",
+			"args": ["--release"],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"label": "release",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
 		}
 	]
 }

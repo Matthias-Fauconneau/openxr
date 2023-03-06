@@ -40,7 +40,7 @@ fn main() {
     assert_eq!(get_D3D12_graphics_requirements(xr, system, &mut requirements), Success); // Microsoft Holographic Remoting implementation fails to create session without this call
     
     let remote_host = std::ffi::CString::new(std::env::args().skip(1).next().as_ref().map(|s| s.as_str()).unwrap_or("192.168.0.101")).unwrap();
-    assert_eq!(remote_host.as_bytes_with_nul(), b"192.168.0.101\0");
+    println!("Hololens: {remote_host:?}");
 
     let mut remoting_connect : Option<extern "C" fn(instance: Instance, system: u64, info: *const RemotingConnectInfo)->Result> = None;
     get_instance_proc_addr(xr, b"xrRemotingConnectMSFT\0" as *const _, &mut remoting_connect as *mut _ as *mut _);
@@ -143,7 +143,7 @@ fn main() {
     let mut space = default();
     assert_eq!(create_reference_space(session, &default(), &mut space), Success);
 
-    println!("{}", local_ip_address::local_ip().unwrap());
+    println!("Laptop: {}", local_ip_address::local_ip().unwrap());
     let ref camera = (std::env::args().skip(2).next().map(|interface| interface.parse().unwrap()).unwrap_or(std::net::Ipv4Addr::UNSPECIFIED),6666);
     let camera = std::net::UdpSocket::bind(camera).unwrap();
 
@@ -229,18 +229,11 @@ fn main() {
         assert_eq!(wait_swapchain_image(swapchain, &SwapchainImageWaitInfo{timeout: i64::MAX, ..default()}), Success);
 
         let mut image = vec![0u16; 160*120];
-        if false {
-            println!("receive");
-            let (len, _sender) = camera.recv_from(bytemuck::cast_slice_mut(&mut image)).unwrap();
-            println!("received");
-            assert!(len == image.len()*std::mem::size_of::<u16>());
-        } else {
-            for i in 0..120*160 { image[i] = i as u16; }
-            //for y in 0..120 { for x in 0..160 { } }
-        }
+        let (len, _sender) = camera.recv_from(bytemuck::cast_slice_mut(&mut image)).unwrap();
+        assert!(len == image.len()*std::mem::size_of::<u16>());
         let min = *image.iter().min().unwrap();
         let max = *image.iter().max().unwrap();
-        for value in image.iter_mut() { *value = (*value as u32 * ((1<<16)-1) / (max - min) as u32) as u16; } // Remap to full range. FIXME: does linear output get gamma compressed or wrongly interpreted as sRGB ?
+        for value in image.iter_mut() { *value = ((*value - min) as u32 * ((1<<16)-1) / (max - min) as u32) as u16; } // Remap to full range. FIXME: does linear output get gamma compressed or wrongly interpreted as sRGB ?
         let size = wgpu::Extent3d{width: 160, height: 120, depth_or_array_layers: 1};
         let format = wgpu::TextureFormat::R16Unorm;
         let gpu_image = device.create_texture(&wgpu::TextureDescriptor{size, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
@@ -282,11 +275,11 @@ fn main() {
             environment_blend_mode,
             display_time: frame_state.predicted_display_time,
             layer_count: 1,
-            layers: &/*[*/(
+            layers: &[
                 &CompositionLayerProjection{space, layer_flags: 0, view_count: 2, views: &[0,1].map(|i|
                     CompositionLayerProjectionView{
-                        pose: views[0/*i*/].pose,
-                        fov: views[0/*i*/].fov,
+                        pose: views[i].pose,
+                        fov: views[i].fov,
                         sub_image: SwapchainSubImage{
                             swapchain,
                             image_rect: Rect2D{offset: Offset2D{x: 0, y: 0}, extent: Extent2D{width: width as i32, height: height as i32}},
@@ -296,7 +289,7 @@ fn main() {
                     }) as *const CompositionLayerProjectionView,
                     ..default()
                 } as *const CompositionLayerProjection
-            /*]*/) as *const *const CompositionLayerProjection,
+            ] as *const *const CompositionLayerProjection,
             ..default()
         }), Success);
     }

@@ -22,48 +22,52 @@ fn main() {
         name: {let mut s = [0; _]; s[..3].copy_from_slice(b"IR\0"); s}, version: 0,
         engine: {let mut s = [0; _]; s[..5].copy_from_slice(b"Rust\0"); s}, engine_version: 0,
         api: 0x1_0000_0000_0025 },
-        extension_count: 2, extension_names: &[b"XR_KHR_D3D12_enable\0" as *const u8, b"XR_MSFT_holographic_remoting\0" as *const _] as *const _, ..default()}, &mut xr), Result::Success);
-    dbg!(xr);
-
+        extension_count: 2, extension_names: &[b"XR_KHR_D3D12_enable\0" as *const u8, b"XR_MSFT_holographic_remoting\0" as *const _] as *const _, ..default()}, &mut xr), Success);
+    
     let mut get_system : Option<extern "C" fn(instance: Instance, get_info: *const SystemGetInfo, *mut u64)->Result> = None;
     get_instance_proc_addr(xr, b"xrGetSystem\0" as *const _, &mut get_system as *mut _ as *mut _);
     let get_system = get_system.unwrap();
 
     let mut system = 0;
-    assert_eq!(get_system(xr, &SystemGetInfo{form_factor: FormFactor::HeadMounted, ..default()}, &mut system), Result::Success);
+    assert_eq!(get_system(xr, &SystemGetInfo{form_factor: FormFactor::HeadMounted, ..default()}, &mut system), Success);
 
     let mut get_D3D12_graphics_requirements : Option<extern "C" fn(instance: Instance, system: u64, requirements: *mut GraphicsRequirementsD3D12)->Result> = None;
     get_instance_proc_addr(xr, b"xrGetD3D12GraphicsRequirementsKHR\0" as *const _, &mut get_D3D12_graphics_requirements as *mut _ as *mut _);
     let get_D3D12_graphics_requirements = get_D3D12_graphics_requirements.unwrap();
 
     let mut requirements = default();
-    assert_eq!(get_D3D12_graphics_requirements(xr, system, &mut requirements), Result::Success); // Microsoft Holographic Remoting implementation fails to create session without this call
-    dbg!(requirements.adapter, requirements.min_feature_level);
-
+    assert_eq!(get_D3D12_graphics_requirements(xr, system, &mut requirements), Success); // Microsoft Holographic Remoting implementation fails to create session without this call
+    
     let remote_host = std::ffi::CString::new(std::env::args().skip(1).next().as_ref().map(|s| s.as_str()).unwrap_or("192.168.0.101")).unwrap();
+    assert_eq!(remote_host.as_bytes_with_nul(), b"192.168.0.101\0");
 
     let mut remoting_connect : Option<extern "C" fn(instance: Instance, system: u64, info: *const RemotingConnectInfo)->Result> = None;
     get_instance_proc_addr(xr, b"xrRemotingConnectMSFT\0" as *const _, &mut remoting_connect as *mut _ as *mut _);
     let remoting_connect = remoting_connect.unwrap();
 
-    remoting_connect(xr, system, &RemotingConnectInfo{remote_host: remote_host.as_ptr(), remote_port: 8265, ..default()});
+    assert_eq!(remoting_connect(xr, system, &RemotingConnectInfo{remote_host: remote_host.as_ptr(), remote_port: 8265, ..default()}), Success);
 
     use pollster::FutureExt as _;
     let adapter = wgpu::Instance::new(
-        wgpu::InstanceDescriptor{backends: wgpu::Backends::DX12, dx12_shader_compiler: wgpu::Dx12Compiler::Dxc{dxil_path: None, dxc_path: None}}
+        wgpu::InstanceDescriptor{backends: wgpu::Backends::DX12, dx12_shader_compiler: default()/*wgpu::Dx12Compiler::Dxc{dxil_path: None, dxc_path: None}*/}
     ).request_adapter(&default()).block_on().unwrap();
-    let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor{features: wgpu::Features::TEXTURE_FORMAT_16BIT_NORM|wgpu::Features::MULTIVIEW, ..default()}, None).block_on().unwrap();
+    dbg!(xr, system, requirements.adapter, requirements.min_feature_level);
+    let (device, queue) = adapter.request_device(
+        &wgpu::DeviceDescriptor{features: wgpu::Features::TEXTURE_FORMAT_16BIT_NORM/*|wgpu::Features::MULTIVIEW*/, ..default()},
+        //&default(),
+        None).block_on().unwrap();
     use wgpu_hal::api::Dx12;
     let session = unsafe {
         let (device, queue) = device.as_hal::<Dx12, _, _>(|device| (device.unwrap().raw_device().as_mut_ptr(), device.unwrap().raw_queue().as_mut_ptr()));
-
+        
         let mut create_session : Option<extern "C" fn(instance: Instance, info: *const SessionCreateInfo, session: *mut Session)->Result> = None;
         get_instance_proc_addr(xr, b"xrCreateSession\0" as *const _, &mut create_session as *mut _ as *mut _);
         let create_session = create_session.unwrap();
 
         let mut session = 0;
-        assert_eq!(create_session(xr, &SessionCreateInfo{next: &GraphicsBindingD3D12{device: device as *const _, queue: queue as *const _, ..default()} as *const _ as *const _, ..default()}, &mut session), Result::Success);
-        session
+        println!("create_session");
+        assert_eq!(create_session(xr, &SessionCreateInfo{next: &GraphicsBindingD3D12{device, queue, ..default()}, system, create_flags: 0, ..default()}, &mut session), Success);
+        dbg!(session)
     };
     let vert_shader = device.create_shader_module(wgpu::include_wgsl!("fullscreen.wgsl"));
     let frag_shader = device.create_shader_module(wgpu::include_wgsl!("sample.wgsl"));
@@ -72,36 +76,35 @@ fn main() {
         wgpu::BindGroupLayoutEntry{binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None}
     ]});
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor{label: None, bind_group_layouts: &[layout], push_constant_ranges: &[]});
-    let format = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-    let mut enumerate_view_configuration_views : Option<extern "C" fn(instance: Instance, system: u64, ty: *const ViewConfigurationType, capacity: u32, len: *const u32, views: *const ViewConfigurationView)->Result> = None;
+    let mut enumerate_view_configuration_views : Option<extern "C" fn(instance: Instance, system: u64, ty: ViewConfigurationType, capacity: u32, len: *const u32, views: *const ViewConfigurationView)->Result> = None;
     get_instance_proc_addr(xr, b"xrEnumerateViewConfigurationViews\0" as *const _, &mut enumerate_view_configuration_views as *mut _ as *mut _);
     let enumerate_view_configuration_views = enumerate_view_configuration_views.unwrap();
 
     fn array<T:Default>(capacity_len_buffer: impl Fn(u32, &mut u32, *mut T)->Result) -> Box<[T]> {
         let mut len = 0;
-        assert_eq!(capacity_len_buffer(0, &mut len, std::ptr::null_mut()), Result::Success);
+        assert_eq!(capacity_len_buffer(0, &mut len, std::ptr::null_mut()), Success);
         let mut buffer = std::iter::from_fn(|| Some(T::default())).take(len as usize).collect::<Box<_>>();
         let mut len = 0;
-        assert_eq!(capacity_len_buffer(buffer.len() as u32, &mut len, buffer.as_mut_ptr()), Result::Success);
+        assert_eq!(capacity_len_buffer(buffer.len() as u32, &mut len, buffer.as_mut_ptr()), Success);
         assert_eq!(buffer.len(), len as usize);
         buffer
     }
 
     let view_configuration_type = ViewConfigurationType::Stereo;
-    let views = array(|capacity, len, buffer| enumerate_view_configuration_views(xr, system, &view_configuration_type, capacity, len, buffer));
-
+    let views = array(|capacity, len, buffer| enumerate_view_configuration_views(xr, system, view_configuration_type, capacity, len, buffer));
+    if views.len() == 2 { assert!(views[0] == views[1]); } else { assert_eq!(views.len(), 1); }
+    
     let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{
         label: None,
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState{module: &vert_shader, entry_point: "fullscreen_vertex_shader", buffers: &[]},
-        fragment: Some(wgpu::FragmentState{module: &frag_shader, entry_point: "sample_fragment_shader", targets: &[Some(format.into())]}),
+        fragment: Some(wgpu::FragmentState{module: &frag_shader, entry_point: "sample_fragment_shader", targets: &[Some(wgpu::TextureFormat::Rgba8UnormSrgb.into())]}),
         primitive: default(),
         depth_stencil: None,
         multisample: default(),
         multiview: None//(views.len() > 1).then(|| (views.len() as u32).try_into().ok().unwrap()),
     });
-    if views.len() == 2 { assert!(views[0] == views[1]); } else { assert!(views.len()==1); }
     let ViewConfigurationView{recommended_image_rect_width: width, recommended_image_rect_height: height, ..} = views[0];
 
     let mut create_swapchain : Option<extern "C" fn(session: Session, create_info: *const SwapchainCreateInfo, swapchain: *mut Swapchain)->Result> = None;
@@ -119,13 +122,14 @@ fn main() {
         array_size: 1,//views.len() as u32,
         mip_count: 1,
         ..default()
-    }, &mut swapchain), Result::Success);
+    }, &mut swapchain), Success);
 
     let mut enumerate_swapchain_images : Option<extern "C" fn(swapchain: Swapchain, capacity: u32, len: *mut u32, images: *mut SwapchainImageD3D12)->Result> = None;
     get_instance_proc_addr(xr, b"xrEnumerateSwapchainImages\0" as *const _, &mut enumerate_swapchain_images as *mut _ as *mut _);
     let enumerate_swapchain_images = enumerate_swapchain_images.unwrap();
 
     let images = array(|capacity, len, buffer| enumerate_swapchain_images(swapchain, capacity, len, buffer)).into_iter().map(|image| {
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
         let desc = wgpu::TextureDescriptor {label: None, size: wgpu::Extent3d{width, height, depth_or_array_layers: 1/*views.len() as u32*/}, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format, usage: wgpu::TextureUsages::RENDER_ATTACHMENT|wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[format]};
         unsafe{device.create_texture_from_hal::<Dx12>(<Dx12 as wgpu_hal::Api>::Device::texture_from_raw(d3d12::Resource::from_raw(image.texture.cast()), desc.format, desc.dimension, desc.size, desc.mip_level_count, desc.sample_count), &desc)}
     }).collect::<Box<_>>();
@@ -135,19 +139,20 @@ fn main() {
     let create_reference_space = create_reference_space.unwrap();
 
     let mut space = default();
-    assert_eq!(create_reference_space(session, &ReferenceSpaceCreateInfo{reference_space_type: ReferenceSpaceType::View, ..default()}, &mut space), Result::Success);
+    assert_eq!(create_reference_space(session, &default(), &mut space), Success);
 
     println!("{}", local_ip_address::local_ip().unwrap());
     let ref camera = (std::env::args().skip(2).next().map(|interface| interface.parse().unwrap()).unwrap_or(std::net::Ipv4Addr::UNSPECIFIED),6666);
     let camera = std::net::UdpSocket::bind(camera).unwrap();
-    loop {
 
-        let mut poll_event : Option<extern "C" fn(instance: Instance, event_data: *mut EventDataBuffer)->Result> = None;
-        get_instance_proc_addr(xr, b"xrPollEvent\0" as *const _, &mut poll_event as *mut _ as *mut _);
-        let poll_event = poll_event.unwrap();
+    let mut poll_event : Option<extern "C" fn(instance: Instance, event_data: *mut EventDataBuffer)->Result> = None;
+    get_instance_proc_addr(xr, b"xrPollEvent\0" as *const _, &mut poll_event as *mut _ as *mut _);
+    let poll_event = poll_event.unwrap();
 
-        let mut event = EventDataBuffer::default();
-        while poll_event(xr, &mut event) == Result::Success {
+    loop {       
+        loop {
+            let mut event = EventDataBuffer::default();
+            assert_eq!(poll_event(xr, &mut event), Success);
             match event.ty {
                 StructureType::InstanceLossPending => { return /*Ok(())*/; }
                 StructureType::SessionStateChanged => {use SessionState::*; match unsafe{&*(&event as *const _ as *const SessionStateChanged)}.state {
@@ -157,7 +162,7 @@ fn main() {
                         get_instance_proc_addr(xr, b"xrBeginSession\0" as *const _, &mut begin_session as *mut _ as *mut _);
                         let begin_session = begin_session.unwrap();
 
-                        assert_eq!(begin_session(session, &SessionBeginInfo{primary_view_configuration_type: view_configuration_type, ..default()}), Result::Success);
+                        assert_eq!(begin_session(session, &SessionBeginInfo{primary_view_configuration_type: view_configuration_type, ..default()}), Success);
                         println!("Ready");
                     }
                     Stopping => {
@@ -165,15 +170,19 @@ fn main() {
                         get_instance_proc_addr(xr, b"xrEndSession\0" as *const _, &mut end_session as *mut _ as *mut _);
                         let end_session = end_session.unwrap();
 
-                        assert_eq!(end_session(session), Result::Success);
+                        assert_eq!(end_session(session), Success);
 
                         println!("Stopping");
                         return /*Ok(())*/;
                     }
                     Exiting|LossPending => { println!("Exiting|LossPending"); return /*Ok(())*/; }
-                    _ => panic!()
+                    e => panic!("{:?}", e as u32)
                 }}
-                _ => {dbg!()}
+                StructureType::RemotingConnected => println!("RemotingConnected"),
+                StructureType::RemotingDisconnected => println!("RemotingDisconnected"),
+                StructureType::RemotingTimestampConversionReady => println!("RemotingTimestampConversionReady"),
+                StructureType::EventDataBuffer => break,
+                e => {panic!("{:?}", e as u32)}
             }
         }
 
@@ -182,13 +191,13 @@ fn main() {
         let wait_frame = wait_frame.unwrap();
 
         let mut frame_state = default();
-        assert_eq!(wait_frame(session, &default(), &mut frame_state), Result::Success);
+        assert_eq!(wait_frame(session, &default(), &mut frame_state), Success);
 
         let mut begin_frame : Option<extern "C" fn(session: Session, frame_begin_info: *const FrameBeginInfo)->Result> = None;
         get_instance_proc_addr(xr, b"xrBeginFrame\0" as *const _, &mut begin_frame as *mut _ as *mut _);
         let begin_frame = begin_frame.unwrap();
 
-        assert_eq!(begin_frame(session, &default()), Result::Success);
+        assert_eq!(begin_frame(session, &default()), Success);
 
         let mut end_frame : Option<extern "C" fn(session: Session, frame_end_info: *const FrameEndInfo)->Result> = None;
         get_instance_proc_addr(xr, b"xrEndFrame\0" as *const _, &mut end_frame as *mut _ as *mut _);
@@ -196,14 +205,14 @@ fn main() {
 
         let environment_blend_mode = EnvironmentBlendMode::Additive;
         if frame_state.should_render == 0 {
-            dbg!();
             assert_eq!(end_frame(session, &FrameEndInfo{
                 environment_blend_mode,
                 display_time: frame_state.predicted_display_time,
                 layer_count: 0,
                 layers: null(),
                 ..default()
-            }), Result::Success);
+            }), Success);
+            dbg!();
             continue;
         }
 
@@ -212,25 +221,31 @@ fn main() {
         let acquire_swapchain_image = acquire_swapchain_image.unwrap();
 
         let mut index = 0;
-        assert_eq!(acquire_swapchain_image(swapchain, &default(), &mut index), Result::Success);
+        assert_eq!(acquire_swapchain_image(swapchain, &default(), &mut index), Success);
 
         let mut wait_swapchain_image : Option<extern "C" fn(swapchain: Swapchain, wait_info: *const SwapchainImageWaitInfo)->Result> = None;
         get_instance_proc_addr(xr, b"xrWaitSwapchainImage\0" as *const _, &mut wait_swapchain_image as *mut _ as *mut _);
         let wait_swapchain_image = wait_swapchain_image.unwrap();
 
-        assert_eq!(wait_swapchain_image(swapchain, &SwapchainImageWaitInfo{timeout: i64::MAX, ..default()}), Result::Success);
+        assert_eq!(wait_swapchain_image(swapchain, &SwapchainImageWaitInfo{timeout: i64::MAX, ..default()}), Success);
 
         let mut image = vec![0u16; 160*120];
-        println!("receive");
-        let (len, _sender) = camera.recv_from(bytemuck::cast_slice_mut(&mut image)).unwrap();
-        println!("received");
-        assert!(len == image.len()*std::mem::size_of::<u16>());
+        if false {
+            println!("receive");
+            let (len, _sender) = camera.recv_from(bytemuck::cast_slice_mut(&mut image)).unwrap();
+            println!("received");
+            assert!(len == image.len()*std::mem::size_of::<u16>());
+        } else {
+            for i in 0..120*160 { image[i] = i as u16; }
+            //for y in 0..120 { for x in 0..160 { } }
+        }
         let min = *image.iter().min().unwrap();
         let max = *image.iter().max().unwrap();
         for value in image.iter_mut() { *value = (*value as u32 * ((1<<16)-1) / (max - min) as u32) as u16; } // Remap to full range. FIXME: does linear output get gamma compressed or wrongly interpreted as sRGB ?
         let size = wgpu::Extent3d{width: 160, height: 120, depth_or_array_layers: 1};
+        let format = wgpu::TextureFormat::R16Unorm;
         let gpu_image = device.create_texture(&wgpu::TextureDescriptor{size, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::R16Unorm, usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST, label: None, view_formats: &[format]});
+                format, usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST, label: None, view_formats: &[format]});
         queue.write_texture(wgpu::ImageCopyTexture{texture: &gpu_image, mip_level: 0,origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All},
                     bytemuck::cast_slice(&image), wgpu::ImageDataLayout {offset: 0, bytes_per_row: std::num::NonZeroU32::new(2 * size.width), rows_per_image: std::num::NonZeroU32::new(size.height)},
                     size);
@@ -253,7 +268,7 @@ fn main() {
         get_instance_proc_addr(xr, b"xrReleaseSwapchainImage\0" as *const _, &mut release_swapchain_image as *mut _ as *mut _);
         let release_swapchain_image = release_swapchain_image.unwrap();
 
-        assert_eq!(release_swapchain_image(swapchain, &default()), Result::Success);
+        assert_eq!(release_swapchain_image(swapchain, &default()), Success);
 
         let mut locate_views : Option<extern "C" fn(session: Session, view_locate_info: *const ViewLocateInfo, view_state: *mut ViewState, capacity: u32, len: *mut u32, views: *mut View)->Result> = None;
         get_instance_proc_addr(xr, b"xrLocateViews\0" as *const _, &mut locate_views as *mut _ as *mut _);
@@ -284,6 +299,6 @@ fn main() {
                 } as *const _
             ] as *const _,
             ..default()
-        }), Result::Success);
+        }), Success);
     }
 }

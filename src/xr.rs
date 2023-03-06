@@ -30,7 +30,7 @@ impl Default for NegotiateRuntimeRequest { fn default() -> Self { Self{ty: Inter
     ReferenceSpaceCreateInfo=37, ViewConfigurationView=41, FrameState=44, FrameBeginInfo=46, CompositionLayerProjectionView=48,
     SwapchainImageAcquireInfo=55, SwapchainImageWaitInfo, SwapchainImageReleaseInfo,
     GraphicsBindingD3D12=1000028000, SwapchainImageD3D12, GraphicsRequirementsD3D12,
-    RemotingConnectInfo=1000065001,
+    RemotingConnectInfo=1000065001, RemotingConnected=1000065005, RemotingDisconnected=1000065006, RemotingTimestampConversionReady=1000065022,
 }
 
 #[derive(Debug)] #[repr(C)] struct ExtensionProperties {ty: StructureType, next: *const void, pub extension_name: [u8; 128], pub extension_version: u32}
@@ -52,24 +52,24 @@ impl Default for GraphicsRequirementsD3D12 { fn default() -> Self { Self{ty: Str
 #[repr(C)] pub struct RemotingConnectInfo {pub ty: StructureType, pub next: *const void, pub remote_host: *const c_char, pub remote_port: u16, pub secure_connection: u32 }
 impl Default for RemotingConnectInfo { fn default() -> Self { Self{ty: StructureType::RemotingConnectInfo, ..unsafe{std::mem::zeroed()}}}}
 
-#[repr(C)] pub struct SessionCreateInfo {pub ty: StructureType, pub next: *const void, pub create_flags: u64, pub system: u64}
-impl Default for SessionCreateInfo { fn default() -> Self { Self{ty: StructureType::SessionCreateInfo, ..unsafe{std::mem::zeroed()}}}}
-
-pub struct GraphicsBindingD3D12 {pub ty: StructureType, pub next: *const void, pub device: *const /*wgpu_hal::dx12::native::ID3D12Device*/void, pub queue: *const /*d3d12::native::ID3D12CommandQueue*/void}
+#[derive(Debug)] #[repr(C)] pub struct GraphicsBindingD3D12 {pub ty: StructureType, pub next: *const void, pub device: *const winapi::um::d3d12::ID3D12Device, pub queue: *const winapi::um::d3d12::ID3D12CommandQueue}
 impl Default for GraphicsBindingD3D12 { fn default() -> Self { Self{ty: StructureType::GraphicsBindingD3D12, ..unsafe{std::mem::zeroed()}}}}
 
-#[derive(Clone,Copy)] #[repr(C)] pub enum ViewConfigurationType { Mono=1, Stereo=2 }
-#[repr(C)] pub struct SessionBeginInfo {pub ty: StructureType, pub next: *const void, pub primary_view_configuration_type: ViewConfigurationType}
-impl Default for SessionBeginInfo { fn default() -> Self { Self{ty: StructureType::SessionBeginInfo, ..unsafe{std::mem::zeroed()}}}}
+#[derive(Debug)] #[repr(C)] pub struct SessionCreateInfo {pub ty: StructureType, pub next: *const GraphicsBindingD3D12, pub create_flags: u64, pub system: u64}
+impl Default for SessionCreateInfo { fn default() -> Self { Self{ty: StructureType::SessionCreateInfo, ..unsafe{std::mem::zeroed()}}}}
 
-#[repr(C)] pub enum ReferenceSpaceType { View=1, Local, Stage }
-#[derive(Clone,Copy)] #[repr(C)] pub struct Vector {pub x: f32, pub y: f32, pub z: f32}
+#[derive(Clone,Copy,Default)] #[repr(C)] pub enum ViewConfigurationType { Mono=1, #[default] Stereo=2 }
+#[repr(C)] pub struct SessionBeginInfo {pub ty: StructureType, pub next: *const void, pub primary_view_configuration_type: ViewConfigurationType}
+impl Default for SessionBeginInfo { fn default() -> Self { Self{ty: StructureType::SessionBeginInfo, next: null(), primary_view_configuration_type: default()} } }
+
+#[derive(Default)] #[repr(C)] pub enum ReferenceSpaceType { #[default] View=1, Local, Stage }
+#[derive(Clone,Copy,Default)] #[repr(C)] pub struct Vector {pub x: f32, pub y: f32, pub z: f32}
 #[derive(Clone,Copy)] #[repr(C)] pub struct Quaternion {pub x: f32, pub y: f32, pub z: f32, pub w: f32}
 impl Default for Quaternion { fn default() -> Self { Self{x: 0., y: 0., z: 0., w: 1.} } }
-#[derive(Clone,Copy)] #[repr(C)] pub struct Pose {pub orientation: Quaternion, pub position: Vector}
+#[derive(Clone,Copy,Default)] #[repr(C)] pub struct Pose {pub orientation: Quaternion, pub position: Vector}
 
 #[repr(C)] pub struct ReferenceSpaceCreateInfo {pub ty: StructureType, pub next: *const void, pub reference_space_type: ReferenceSpaceType, pub pose_in_reference_space: Pose}
-impl Default for ReferenceSpaceCreateInfo { fn default() -> Self { Self{ty: StructureType::ReferenceSpaceCreateInfo, ..unsafe{std::mem::zeroed()}}}}
+impl Default for ReferenceSpaceCreateInfo { fn default() -> Self { Self{ty: StructureType::ReferenceSpaceCreateInfo, next: null(), reference_space_type: default(), pose_in_reference_space: default()}}}
 
 #[derive(PartialEq)] #[repr(C)] pub struct ViewConfigurationView {pub ty: StructureType, pub next: *const void, pub recommended_image_rect_width: u32, pub max_image_rect_width: u32, pub recommended_image_rect_height: u32, pub max_image_rect_height: u32, pub recommended_swapchain_sample_count: u32, pub max_swapchain_sample_count: u32}
 impl Default for ViewConfigurationView { fn default() -> Self { Self{ty: StructureType::ViewConfigurationView, ..unsafe{std::mem::zeroed()}}}}
@@ -83,8 +83,8 @@ impl Default for SwapchainCreateInfo { fn default() -> Self { Self{ty: Structure
 #[repr(C)] pub struct EventDataBuffer {pub ty: StructureType, pub next: *const void, varying: [u8; 4000]}
 impl Default for EventDataBuffer { fn default() -> Self { Self{ty: StructureType::EventDataBuffer, ..unsafe{std::mem::zeroed()}}}}
 
-#[repr(C)] pub enum SessionState { Unknown, Idle, Ready, Synchronized, Visible, Focused, Stopping, LossPending, Exiting }
-pub struct SessionStateChanged {pub ty: StructureType, pub next: *const void, pub session: Session, pub state: SessionState, pub time: i64}
+#[derive(Debug,Clone,Copy)] #[repr(C)] pub enum SessionState { Unknown, Idle, Ready, Synchronized, Visible, Focused, Stopping, LossPending, Exiting }
+#[repr(C)] pub struct SessionStateChanged {pub ty: StructureType, pub next: *const void, pub session: Session, pub state: SessionState, pub time: i64}
 
 #[repr(C)] pub struct SwapchainImageD3D12 {pub ty: StructureType, pub next: *mut void, pub texture: *mut /*ID3D12Resource*/void}
 impl Default for SwapchainImageD3D12 { fn default() -> Self { Self{ty: StructureType::SwapchainImageD3D12, ..unsafe{std::mem::zeroed()}}}}
@@ -98,10 +98,10 @@ impl Default for FrameState { fn default() -> Self { Self{ty: StructureType::Fra
 #[repr(C)] pub struct FrameBeginInfo {pub ty: StructureType, pub next: *const void}
 impl Default for FrameBeginInfo { fn default() -> Self { Self{ty: StructureType::FrameBeginInfo, next: null()}}}
 
-#[repr(C)] pub enum EnvironmentBlendMode { Opaque=1, Additive, AlphaBlend }
+#[derive(Default)] #[repr(C)] pub enum EnvironmentBlendMode { Opaque=1, #[default] Additive, AlphaBlend }
 
 #[repr(C)] pub struct FrameEndInfo {pub ty: StructureType, pub next: *const void, pub display_time: i64, pub environment_blend_mode: EnvironmentBlendMode, pub layer_count: u32, pub layers: *const *const CompositionLayerProjection}
-impl Default for FrameEndInfo { fn default() -> Self { Self{ty: StructureType::FrameEndInfo, ..unsafe{std::mem::zeroed()}}}}
+impl Default for FrameEndInfo { fn default() -> Self { Self{ty: StructureType::FrameEndInfo, next: null(), display_time: 0, environment_blend_mode: default(), layer_count: 0, layers: null()} } }
 
 #[repr(C)] pub struct SwapchainImageAcquireInfo {pub ty: StructureType, pub next: *const void}
 impl Default for SwapchainImageAcquireInfo { fn default() -> Self { Self{ty: StructureType::SwapchainImageAcquireInfo, next: null()}}}
@@ -113,7 +113,7 @@ impl Default for SwapchainImageWaitInfo { fn default() -> Self { Self{ty: Struct
 impl Default for SwapchainImageReleaseInfo { fn default() -> Self { Self{ty: StructureType::SwapchainImageReleaseInfo, next: null()}}}
 
 #[repr(C)] pub struct ViewLocateInfo {pub ty: StructureType, pub next: *const void, pub view_configuration_type: ViewConfigurationType, pub display_time: i64, pub space: Space}
-impl Default for ViewLocateInfo { fn default() -> Self { Self{ty: StructureType::ViewLocateInfo, ..unsafe{std::mem::zeroed()}}}}
+impl Default for ViewLocateInfo { fn default() -> Self { Self{ty: StructureType::ViewLocateInfo, next: null(), view_configuration_type: default(), display_time: 0, space: 0}}}
 
 #[repr(C)] pub struct ViewState {pub ty: StructureType, pub next: *mut void, pub view_state_flags: u32}
 impl Default for ViewState { fn default() -> Self { Self{ty: StructureType::ViewState, ..unsafe{std::mem::zeroed()}}}}

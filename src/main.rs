@@ -1,9 +1,9 @@
-#![feature(default_free_fn, generic_arg_infer, raw_dylib)]#![allow(non_snake_case)]
+#![feature(default_free_fn, generic_arg_infer)]#![allow(non_snake_case)]
 use std::{default::default, ptr::null};
-mod xr; use xr::{*, Result::Success};
+//mod xr; use xr::{*, Result::Success};
 
 fn main() {
-    /*//  ffplay -headers "Authorization: Basic ZA/" 
+    /*//  ffplay -headers "Authorization: Basic ZA/"
     let response = attohttpc::get("https://192.168.0.101/api/holographic/stream/live_high.mp4?holo=false&pv=true&mic=false&loopback=false&RenderFromCamera=false")
         .basic_auth("ethnsel@gmail.com",Some("")).send();
     assert!(response.is_success());*/
@@ -19,44 +19,43 @@ fn main() {
     let input = ictx.streams().best(Type::Video).unwrap();
     let video_stream_index = input.index();
 
-        let context_decoder = ffmpeg::codec::context::Context::from_parameters(input.parameters())?;
-        let mut decoder = context_decoder.decoder().video()?;
+    let context_decoder = ffmpeg::codec::context::Context::from_parameters(input.parameters())?;
+    let mut decoder = context_decoder.decoder().video()?;
 
-        let mut scaler = Context::get(
-            decoder.format(),
-            decoder.width(),
-            decoder.height(),
-            Pixel::RGB24,
-            decoder.width(),
-            decoder.height(),
-            Flags::BILINEAR,
-        )?;
+    let mut scaler = Context::get(
+        decoder.format(),
+        decoder.width(),
+        decoder.height(),
+        Pixel::RGB24,
+        decoder.width(),
+        decoder.height(),
+        Flags::BILINEAR,
+    )?;
 
-        let mut frame_index = 0;
+    let mut frame_index = 0;
 
-        let mut receive_and_process_decoded_frames =
-            |decoder: &mut ffmpeg::decoder::Video| -> Result<(), ffmpeg::Error> {
-                let mut decoded = Video::empty();
-                while decoder.receive_frame(&mut decoded).is_ok() {
-                    let mut rgb_frame = Video::empty();
-                    scaler.run(&decoded, &mut rgb_frame)?;
-                    save_file(&rgb_frame, frame_index).unwrap();
-                    frame_index += 1;
-                }
-                Ok(())
-            };
-
-        for (stream, packet) in ictx.packets() {
-            if stream.index() == video_stream_index {
-                decoder.send_packet(&packet)?;
-                receive_and_process_decoded_frames(&mut decoder)?;
+    let mut receive_and_process_decoded_frames =
+        |decoder: &mut ffmpeg::decoder::Video| -> Result<(), ffmpeg::Error> {
+            let mut decoded = Video::empty();
+            while decoder.receive_frame(&mut decoded).is_ok() {
+                let mut rgb_frame = Video::empty();
+                scaler.run(&decoded, &mut rgb_frame)?;
+                save_file(&rgb_frame, frame_index).unwrap();
+                frame_index += 1;
             }
-        }
-        decoder.send_eof()?;
-        receive_and_process_decoded_frames(&mut decoder)?;
-    }
+            Ok(())
+        };
 
-    let ref mut runtime_request = NegotiateRuntimeRequest::default();
+    for (stream, packet) in ictx.packets() {
+        if stream.index() == video_stream_index {
+            decoder.send_packet(&packet)?;
+            receive_and_process_decoded_frames(&mut decoder)?;
+        }
+    }
+    decoder.send_eof()?;
+    receive_and_process_decoded_frames(&mut decoder)?;
+
+    /*let ref mut runtime_request = NegotiateRuntimeRequest::default();
     assert!(unsafe{negotiate_loader_runtime_interface(&NegotiateLoaderInfo::default() as *const _, runtime_request as *mut _)} == Success);
     let get_instance_proc_addr = runtime_request.get_instance_proc_addr.unwrap();
 
@@ -77,7 +76,7 @@ fn main() {
         engine: {let mut s = [0; _]; s[..5].copy_from_slice(b"Rust\0"); s}, engine_version: 0,
         api: 0x1_0000_0000_0025 },
         extension_count: 2, extension_names: &[b"XR_KHR_D3D12_enable\0" as *const u8, b"XR_MSFT_holographic_remoting\0" as *const _] as *const _, ..default()}, &mut xr), Success);
-    
+
     let mut get_system : Option<extern "C" fn(instance: Instance, get_info: *const SystemGetInfo, *mut u64)->Result> = None;
     get_instance_proc_addr(xr, b"xrGetSystem\0" as *const _, &mut get_system as *mut _ as *mut _);
     let get_system = get_system.unwrap();
@@ -91,7 +90,7 @@ fn main() {
 
     let mut requirements = default();
     assert_eq!(get_D3D12_graphics_requirements(xr, system, &mut requirements), Success); // Microsoft Holographic Remoting implementation fails to create session without this call
-    
+
     let remote_host = std::ffi::CString::new(std::env::args().skip(1).next().as_ref().map(|s| s.as_str()).unwrap_or("192.168.0.101")).unwrap();
     println!("Hololens: {remote_host:?}");
 
@@ -111,7 +110,7 @@ fn main() {
     use wgpu_hal::api::Dx12;
     let session = unsafe {
         let (device, queue) = device.as_hal::<Dx12, _, _>(|device| (device.unwrap().raw_device().as_mut_ptr(), device.unwrap().raw_queue().as_mut_ptr()));
-        
+
         let mut create_session : Option<extern "C" fn(instance: Instance, info: *const SessionCreateInfo, session: *mut Session)->Result> = None;
         get_instance_proc_addr(xr, b"xrCreateSession\0" as *const _, &mut create_session as *mut _ as *mut _);
         let create_session = create_session.unwrap();
@@ -146,7 +145,7 @@ fn main() {
     let views = array(|capacity, len, buffer| enumerate_view_configuration_views(xr, system, view_configuration_type, capacity, len, buffer));
     assert_eq!(views.len(), 2);
     if views.len() == 2 { assert!(views[0] == views[1]); } else { assert_eq!(views.len(), 1); }
-    
+
     let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{
         label: None,
         layout: Some(&pipeline_layout),
@@ -216,7 +215,7 @@ fn main() {
     get_instance_proc_addr(xr, b"xrWaitSwapchainImage\0" as *const _, &mut wait_swapchain_image as *mut _ as *mut _);
     let wait_swapchain_image = wait_swapchain_image.unwrap();
 
-    loop {       
+    loop {
         loop {
             let mut event = EventDataBuffer::default();
             assert_eq!(poll_event(xr, &mut event), Success);
@@ -275,7 +274,7 @@ fn main() {
         let mut index = 0;
         assert_eq!(acquire_swapchain_image(swapchain, &default(), &mut index), Success);
 
-        
+
         assert_eq!(wait_swapchain_image(swapchain, &SwapchainImageWaitInfo{timeout: i64::MAX, ..default()}), Success);
 
         let mut image = vec![0u16; 160*120];
@@ -342,5 +341,5 @@ fn main() {
             ] as *const *const CompositionLayerProjection,
             ..default()
         }), Success);
-    }
+    }*/
 }

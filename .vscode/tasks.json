@@ -20,15 +20,16 @@
 		{
 			"type": "cargo",
 			"command": "run",
-			"args": ["--release"],
+			"args": [
+				//"--release"
+			],
 			"problemMatcher": [
 				"$rustc"
 			],
-			"label": "release",
-			"group": {
-				"kind": "build",
-				"isDefault": true
+			"label": "native",
+			"presentation": {
+				"clear": true
 			}
-		}
+		},
 	]
 }

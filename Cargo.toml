@@ -1,11 +1,15 @@
 package={name='openxr', version='0.0.0', edition='2021'}
 [dependencies]
-#bytemuck='*'
-#d3d12='*'
-#wgpu={version='*', features=['spirv']}
-#wgpu-hal={version='=0.15.2', features=['dx12']}
-#pollster='*'
-winapi={version='*', features=['d3d12']} #DXGI_FORMAT_*
-#local-ip-address='*'
-ffmpeg={version='*', package='ffmpeg-next'}
+bytemuck='*'
+d3d12='*'
+wgpu={version='*', features=['spirv']}
+wgpu-hal={version='*', features=['dx12','libloading']} # Broken wgpu-hal dep spec dx12:libloading for unused PresentationTimer
+pollster='*'
+winapi={version='*', features=['d3d12','dxgi1_6']} #DXGI_FORMAT_*
+local-ip-address='*'
+ffmpeg={version='*', package='ffmpeg-next', default-features=false, features=['static','codec','format']}
 #attohttpc='*'
+
+#[patch.'crates-io']
+#ffmpeg-sys-next={git='https://github.com/Matthias-Fauconneau/rust-ffmpeg-sys'}
+#ffmpeg-sys-next={path='../rust-ffmpeg-sys'}
